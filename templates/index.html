@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoPal AI - Crypto Advisor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="logo">
+                <div>
+                    <h1><i class="fas fa-robot"></i> CryptoPal AI</h1>
+                    <p class="tagline">Your intelligent crypto advisor</p>
+                </div>
+            </div>
+            <div class="header-right">
+                <span class="status {{ 'online' if gemini_configured else 'offline' }}">
+                    <i class="fas fa-circle"></i>
+                    {{ 'AI Online' if gemini_configured else 'Basic Mode' }}
+                </span>
+                <button class="btn-clear" onclick="clearChat()">
+                    <i class="fas fa-trash"></i> Clear
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Messages -->
+        <div class="chat-messages" id="chat-messages">
+            {% for msg in conversation %}
+            <div class="message {{ msg.role }}-message">
+                <div class="message-avatar">
+                    {% if msg.role == 'user' %}
+                    <i class="fas fa-user"></i>
+                    {% else %}
+                    <i class="fas fa-robot"></i>
+                    {% endif %}
+                </div>
+                <div class="message-content">
+                    <div class="message-text">{{ msg.content | safe }}</div>
+                    <div class="message-time">
+                        {{ msg.timestamp.split('T')[1][:5] if msg.timestamp else 'Just now' }}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            
+            <!-- Typing indicator will be inserted here -->
+        </div>
+
+        <!-- Quick Questions -->
+        <div class="quick-questions">
+            <p>Quick questions:</p>
+            <div class="question-chips">
+                <button class="chip" onclick="sendMessage('What are the most sustainable cryptocurrencies?')">
+                    🌱 Sustainable cryptos
+                </button>
+                <button class="chip" onclick="sendMessage('Should I invest in Bitcoin now?')">
+                    📈 Bitcoin analysis
+                </button>
+                <button class="chip" onclick="sendMessage('Best crypto for beginners?')">
+                    🎯 For beginners
+                </button>
+                <button class="chip" onclick="sendMessage('What are crypto risks?')">
+                    ⚠️ Risk assessment
+                </button>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <form id="chat-form">
+                <div class="input-wrapper">
+                    <textarea 
+                        id="message-input"
+                        placeholder="Ask about cryptocurrencies, investments, trends..."
+                        rows="1"
+                        autocomplete="off"
+                        oninput="autoResize(this)"
+                    ></textarea>
+                    <button type="submit" class="btn-send">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                <div class="hint">
+                    <i class="fas fa-info-circle"></i>
+                    Press Enter to send, Shift+Enter for new line
+                </div>
+            </form>
+        </div>
+
+        <!-- Simple Disclaimer -->
+        <div class="disclaimer">
+            <p><i class="fas fa-exclamation-triangle"></i> Cryptocurrency investments are risky. This is informational only. Always do your own research.</p>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const chatForm = document.getElementById('chat-form');
+        const messageInput = document.getElementById('message-input');
+        const chatMessages = document.getElementById('chat-messages');
+        
+        // Auto-resize textarea
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        }
+        
+        // Send message
+        async function sendMessage(text = null) {
+            const message = text || messageInput.value.trim();
+            
+            if (!message) return;
+            
+            // Clear input if it's from textarea
+            if (!text) {
+                messageInput.value = '';
+                autoResize(messageInput);
+            }
+            
+            // Add user message to UI
+            addMessage('user', message);
+            
+            // Show typing indicator
+            showTyping();
+            
+            // Disable input
+            messageInput.disabled = true;
+            
+            try {
+                // Send to server
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                if (!response.ok) throw new Error('Network error');
+                
+                const data = await response.json();
+                
+                // Remove typing indicator
+                hideTyping();
+                
+                // Add AI response
+                addMessage('assistant', data.response);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                hideTyping();
+                addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+            } finally {
+                // Re-enable input
+                messageInput.disabled = false;
+                messageInput.focus();
+            }
+        }
+        
+        // Add message to chat UI
+        function addMessage(role, content) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+            
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            messageDiv.innerHTML = `
+                <div class="message-avatar">
+                    <i class="fas fa-${role === 'user' ? 'user' : 'robot'}"></i>
+                </div>
+                <div class="message-content">
+                    <div class="message-text">${content}</div>
+                    <div class="message-time">${time}</div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+        }
+        
+        // Show typing indicator
+        function showTyping() {
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message assistant-message typing';
+            typingDiv.id = 'typing-indicator';
+            typingDiv.innerHTML = `
+                <div class="message-avatar">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="message-content">
+                    <div class="typing-dots">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(typingDiv);
+            scrollToBottom();
+        }
+        
+        // Hide typing indicator
+        function hideTyping() {
+            const typing = document.getElementById('typing-indicator');
+            if (typing) typing.remove();
+        }
+        
+        // Clear chat
+        async function clearChat() {
+            if (confirm('Clear conversation?')) {
+                try {
+                    await fetch('/clear', { method: 'POST' });
+                    location.reload();
+                } catch (error) {
+                    console.error('Error clearing chat:', error);
+                }
+            }
+        }
+        
+        // Scroll to bottom
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Event Listeners
+        chatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            sendMessage();
+        });
+        
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        // Focus input on load
+        window.onload = function() {
+            messageInput.focus();
+            scrollToBottom();
+        };
+        
+        // Auto-scroll when new messages are added
+        const observer = new MutationObserver(scrollToBottom);
+        observer.observe(chatMessages, { childList: true });
+    </script>
+</body>
+</html>
