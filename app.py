@@ -111,7 +111,22 @@ def get_messages(session_id, limit=20):
         'SELECT role, content, timestamp FROM conversations WHERE session_id = ? ORDER BY timestamp ASC LIMIT ?',
         (session_id, limit)
     )
-    messages = [{'role': row[0], 'content': row[1], 'timestamp': row[2]} for row in c.fetchall()]
+    rows = c.fetchall()
+
+    messages = []
+    for row in rows:
+        role, content, ts = row[0], row[1], row[2]
+        # Normalize timestamp to use 'T' (ISO format) so templates can safely split('T')
+        if ts:
+            try:
+                if isinstance(ts, str):
+                    if 'T' not in ts and ' ' in ts:
+                        ts = ts.replace(' ', 'T')
+                else:
+                    ts = datetime.fromisoformat(str(ts)).isoformat()
+            except Exception:
+                ts = str(ts)
+        messages.append({'role': role, 'content': content, 'timestamp': ts})
     conn.close()
     return messages
 
